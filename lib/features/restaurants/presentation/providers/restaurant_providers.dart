@@ -1,4 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../models/restaurant.dart';
+import '../../data/mock_restaurant_data.dart';
 import '../domain/restaurant.dart';
 import '../data/mock_restaurant_data.dart';
 

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../features/restaurants/domain/restaurant.dart';
 import '../../../features/auth/presentation/providers/auth_providers.dart';
+import '../../constants/app_colors.dart';
 import '../../constants/app_constants.dart';
 import '../../utils/app_utils.dart';
 

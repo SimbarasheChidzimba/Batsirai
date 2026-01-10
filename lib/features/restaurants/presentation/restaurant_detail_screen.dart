@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_colors.dart';
 import 'providers/restaurant_providers.dart';
 import '../../auth/presentation/providers/auth_providers.dart';
 import '../../../core/constants/app_constants.dart';

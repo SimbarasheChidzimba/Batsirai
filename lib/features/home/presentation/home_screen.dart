@@ -198,6 +198,7 @@ class _MembershipBanner extends StatelessWidget {
   }
 }
 
+
 class _FeaturedEventsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {

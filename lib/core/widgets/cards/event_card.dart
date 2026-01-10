@@ -5,6 +5,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../features/events/domain/event.dart';
 import '../../../features/auth/presentation/providers/auth_providers.dart';
+import '../../constants/app_colors.dart';
 import '../../constants/app_constants.dart';
 import '../../utils/app_utils.dart';
 

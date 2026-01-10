@@ -1,4 +1,5 @@
-import '../restaurants/domain/restaurant.dart';
+import '../../../models/restaurant.dart';
+import '../domain/restaurant.dart';
 
 class MockRestaurantData {
   static final List<Restaurant> restaurants = [
