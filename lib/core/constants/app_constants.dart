@@ -166,6 +166,26 @@ class AppConstants {
   static const String networkError = 'No internet connection. Please check your network.';
   static const String locationError = 'Unable to get your location. Please enable location services.';
   static const String permissionError = 'Permission denied. Please grant the required permissions.';
+}
+
+// Spacing constants
+class Spacing {
+  static const double xs = 4.0;
+  static const double sm = 8.0;
+  static const double md = 16.0;
+  static const double lg = 24.0;
+  static const double xl = 32.0;
+  static const double xxl = 48.0;
+}
+
+// Border radius constants
+class AppRadius {
+  static const double xs = 4.0;
+  static const double sm = 8.0;
+  static const double md = 12.0;
+  static const double lg = 16.0;
+  static const double xl = 24.0;
+  static const double full = 9999.0;
 
   // Success Messages
   static const String bookingSuccess = 'Booking confirmed! Check your email for details.';

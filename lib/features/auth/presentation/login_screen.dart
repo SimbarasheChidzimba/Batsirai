@@ -32,7 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final user = await mockLogin(email: _emailController.text);
       ref.read(currentUserProvider.notifier).state = user;
-      if (mounted) context.go('/home');
+      if (mounted) context.go('/');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,0 +1,350 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import '../../../../core/constants/app_constants.dart';
+import '../providers/booking_providers.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+
+class PaymentScreen extends ConsumerStatefulWidget {
+  final String type; // 'restaurant' or 'event'
+  final Map<String, dynamic> bookingData;
+  final double amount;
+
+  const PaymentScreen({
+    super.key,
+    required this.type,
+    required this.bookingData,
+    required this.amount,
+  });
+
+  @override
+  ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
+}
+
+class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+  String _selectedPaymentMethod = 'card';
+  final _cardNumberController = TextEditingController();
+  final _expiryController = TextEditingController();
+  final _cvvController = TextEditingController();
+  final _cardNameController = TextEditingController();
+  bool _isProcessing = false;
+
+  @override
+  void dispose() {
+    _cardNumberController.dispose();
+    _expiryController.dispose();
+    _cvvController.dispose();
+    _cardNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _processPayment() async {
+    if (_selectedPaymentMethod == 'card') {
+      if (_cardNumberController.text.isEmpty ||
+          _expiryController.text.isEmpty ||
+          _cvvController.text.isEmpty ||
+          _cardNameController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all card details')),
+        );
+        return;
+      }
+    }
+
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to complete payment')),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+
+    // Simulate payment processing
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Create booking after payment
+    if (widget.type == 'restaurant') {
+      final booking = await createRestaurantBooking(
+        userId: user.id,
+        restaurantId: widget.bookingData['restaurantId'],
+        restaurantName: widget.bookingData['restaurantName'],
+        bookingDate: widget.bookingData['bookingDate'],
+        bookingTime: widget.bookingData['bookingTime'],
+        partySize: widget.bookingData['partySize'],
+        specialRequests: widget.bookingData['specialRequests'],
+      );
+      ref.read(bookingsProvider.notifier).addBooking(booking);
+      
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        context.pushReplacement(
+          '/booking-success',
+          extra: {
+            'type': widget.type,
+            'bookingData': {
+              ...widget.bookingData,
+              'confirmationCode': booking.confirmationCode,
+            },
+            'amount': widget.amount,
+          },
+        );
+      }
+    } else {
+      // Event booking - for now just show success
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        context.pushReplacement(
+          '/booking-success',
+          extra: {
+            'type': widget.type,
+            'bookingData': {
+              ...widget.bookingData,
+              'confirmationCode': DateTime.now().millisecondsSinceEpoch.toString().substring(6),
+            },
+            'amount': widget.amount,
+          },
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Payment')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Order Summary
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order Summary',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Divider(),
+                    if (widget.type == 'restaurant') ...[
+                      _SummaryRow('Restaurant', widget.bookingData['restaurantName']),
+                      _SummaryRow('Date', _formatDate(widget.bookingData['bookingDate'])),
+                      _SummaryRow('Time', _formatTime(widget.bookingData['bookingTime'])),
+                      _SummaryRow('Party Size', '${widget.bookingData['partySize']} guests'),
+                    ] else ...[
+                      _SummaryRow('Event', widget.bookingData['eventTitle']),
+                      _SummaryRow('Date', _formatDate(widget.bookingData['eventDate'])),
+                      _SummaryRow('Tickets', '${widget.bookingData['totalTickets']} tickets'),
+                    ],
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        Text(
+                          '\$${widget.amount.toStringAsFixed(2)}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.xl),
+            Text(
+              'Payment Method',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: Spacing.md),
+            _PaymentMethodOption(
+              icon: PhosphorIcons.creditCard(),
+              title: 'Credit/Debit Card',
+              value: 'card',
+              selected: _selectedPaymentMethod == 'card',
+              onTap: () => setState(() => _selectedPaymentMethod = 'card'),
+            ),
+            const SizedBox(height: Spacing.sm),
+            _PaymentMethodOption(
+              icon: PhosphorIcons.wallet(),
+              title: 'Mobile Money',
+              value: 'mobile',
+              selected: _selectedPaymentMethod == 'mobile',
+              onTap: () => setState(() => _selectedPaymentMethod = 'mobile'),
+            ),
+            const SizedBox(height: Spacing.sm),
+            _PaymentMethodOption(
+              icon: PhosphorIcons.bank(),
+              title: 'Bank Transfer',
+              value: 'bank',
+              selected: _selectedPaymentMethod == 'bank',
+              onTap: () => setState(() => _selectedPaymentMethod = 'bank'),
+            ),
+            if (_selectedPaymentMethod == 'card') ...[
+              const SizedBox(height: Spacing.xl),
+              Text(
+                'Card Details',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: Spacing.md),
+              TextField(
+                controller: _cardNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Cardholder Name',
+                  prefixIcon: const Icon(Icons.person),
+                ),
+              ),
+              const SizedBox(height: Spacing.md),
+              TextField(
+                controller: _cardNumberController,
+                decoration: const InputDecoration(
+                  labelText: 'Card Number',
+                  prefixIcon: const Icon(Icons.credit_card),
+                ),
+                keyboardType: TextInputType.number,
+                maxLength: 16,
+              ),
+              const SizedBox(height: Spacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _expiryController,
+                      decoration: const InputDecoration(
+                        labelText: 'MM/YY',
+                        prefixIcon: const Icon(Icons.calendar_today),
+                      ),
+                      maxLength: 5,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Expanded(
+                    child: TextField(
+                      controller: _cvvController,
+                      decoration: const InputDecoration(
+                        labelText: 'CVV',
+                        prefixIcon: const Icon(Icons.lock),
+                      ),
+                      keyboardType: TextInputType.number,
+                      maxLength: 3,
+                      obscureText: true,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.lg),
+          child: ElevatedButton(
+            onPressed: _isProcessing ? null : _processPayment,
+            child: _isProcessing
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text('Pay \$${widget.amount.toStringAsFixed(2)}'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  String _formatTime(DateTime time) {
+    final hour = time.hour;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+    return '$displayHour:$minute $period';
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SummaryRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentMethodOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PaymentMethodOption({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(Spacing.md),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Colors.grey.shade300,
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: selected ? Theme.of(context).colorScheme.primary : null),
+            const SizedBox(width: Spacing.md),
+            Expanded(child: Text(title)),
+            if (selected)
+              Icon(
+                PhosphorIcons.checkCircle(),
+                color: Theme.of(context).colorScheme.primary,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../models/user.dart';
 import '../../domain/user.dart';
-import '../domain/user.dart';
 
 // Current user provider (mock implementation)
 final currentUserProvider = StateProvider<User?>((ref) {

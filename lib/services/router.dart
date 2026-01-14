@@ -10,6 +10,12 @@ import '../features/events/presentation/screens/event_detail_screen.dart';
 import '../features/events/presentation/screens/ticket_purchase_screen.dart';
 import '../features/membership/presentation/screens/membership_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
+import '../features/auth/presentation/login_screen.dart';
+import '../features/auth/presentation/signup_screen.dart';
+import '../features/auth/presentation/screens/signup_success_screen.dart';
+import '../features/bookings/presentation/screens/payment_screen.dart';
+import '../features/bookings/presentation/screens/booking_success_screen.dart';
+import '../features/bookings/presentation/bookings_list_screen.dart';
 import '../core/widgets/bottom_nav_bar.dart';
 
 part 'router.g.dart';
@@ -133,6 +139,52 @@ GoRouter router(RouterRef ref) {
             ],
           ),
         ],
+      ),
+      // Auth routes
+      GoRoute(
+        path: '/login',
+        name: 'login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/signup',
+        name: 'signup',
+        builder: (context, state) => const SignupScreen(),
+      ),
+      GoRoute(
+        path: '/signup-success',
+        name: 'signup-success',
+        builder: (context, state) => const SignupSuccessScreen(),
+      ),
+      // Booking routes
+      GoRoute(
+        path: '/payment',
+        name: 'payment',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return PaymentScreen(
+            type: extra['type'] ?? 'restaurant',
+            bookingData: extra['bookingData'] ?? {},
+            amount: extra['amount']?.toDouble() ?? 0.0,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/booking-success',
+        name: 'booking-success',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return BookingSuccessScreen(
+            type: extra['type'] as String?,
+            bookingData: extra['bookingData'] as Map<String, dynamic>?,
+            amount: extra['amount']?.toDouble(),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/bookings',
+        name: 'bookings',
+        builder: (context, state) => const BookingsListScreen(),
       ),
     ],
   );

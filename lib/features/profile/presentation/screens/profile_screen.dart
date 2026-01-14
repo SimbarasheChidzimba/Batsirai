@@ -1,25 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final isAuthenticated = user != null;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(
         children: [
-          _buildHeader(context),
+          _buildHeader(context, ref, user, isAuthenticated),
           const SizedBox(height: 24),
-          _buildSection(context, 'Account', [
-            _buildListTile(PhosphorIcons.user(), 'Edit Profile', () {}),
-            _buildListTile(PhosphorIcons.heart(), 'Favorites', () {}),
-            _buildListTile(PhosphorIcons.calendarCheck(), 'My Bookings', () {}),
-            _buildListTile(PhosphorIcons.ticket(), 'My Tickets', () {}),
-          ]),
+          if (isAuthenticated) ...[
+            _buildSection(context, 'Account', [
+              _buildListTile(
+                PhosphorIcons.user(),
+                'Edit Profile',
+                () {},
+              ),
+              _buildListTile(
+                PhosphorIcons.heart(),
+                'Favorites',
+                () {},
+              ),
+              _buildListTile(
+                PhosphorIcons.calendarCheck(),
+                'My Bookings',
+                () => context.push('/bookings'),
+              ),
+              _buildListTile(
+                PhosphorIcons.ticket(),
+                'My Tickets',
+                () => context.push('/bookings'),
+              ),
+            ]),
+          ],
           _buildSection(context, 'Settings', [
             _buildListTile(PhosphorIcons.bell(), 'Notifications', () {}),
             _buildListTile(PhosphorIcons.lock(), 'Privacy', () {}),
@@ -27,17 +50,35 @@ class ProfileScreen extends ConsumerWidget {
           ]),
           Padding(
             padding: const EdgeInsets.all(16),
-            child: OutlinedButton(
-              onPressed: () {},
-              child: const Text('Sign Out'),
-            ),
+            child: isAuthenticated
+                ? OutlinedButton.icon(
+                    onPressed: () async {
+                      await mockLogout();
+                      ref.read(currentUserProvider.notifier).state = null;
+                      if (context.mounted) {
+                        context.go('/');
+                      }
+                    },
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Sign Out'),
+                  )
+                : FilledButton.icon(
+                    onPressed: () => context.push('/login'),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Sign In'),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(
+    BuildContext context,
+    WidgetRef ref,
+    user,
+    bool isAuthenticated,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
       color: AppColors.primaryContainer,
@@ -46,17 +87,36 @@ class ProfileScreen extends ConsumerWidget {
           CircleAvatar(
             radius: 50,
             backgroundColor: AppColors.primary,
-            child: PhosphorIcon(PhosphorIcons.user(), size: 50, color: Colors.white),
+            child: PhosphorIcon(
+              PhosphorIcons.user(),
+              size: 50,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 16),
-          Text('Guest User', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            isAuthenticated ? (user.displayName ?? user.email) : 'Guest User',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 4),
-          const Text('guest@batsirai.co.zw'),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () {},
-            child: const Text('Sign In'),
+          Text(
+            isAuthenticated ? user.email : 'Sign in to access all features',
+            style: TextStyle(color: Colors.grey[600]),
           ),
+          if (isAuthenticated && user.membershipTier != null) ...[
+            const SizedBox(height: 8),
+            Chip(
+              label: Text(user.membershipTierName),
+              backgroundColor: AppColors.secondaryContainer,
+            ),
+          ],
+          if (!isAuthenticated) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => context.push('/login'),
+              child: const Text('Sign In'),
+            ),
+          ],
         ],
       ),
     );
@@ -68,7 +128,10 @@ class ProfileScreen extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         ...items,
       ],
