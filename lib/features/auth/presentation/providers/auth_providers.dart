@@ -1,11 +1,47 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/user.dart';
+import 'package:batsirai_app/features/auth/data/providers/auth_repository_provider.dart';
+import 'package:batsirai_app/features/auth/data/auth_repository.dart';
+import 'package:batsirai_app/core/services/providers/service_providers.dart';
+import 'package:batsirai_app/core/services/secure_storage_service.dart';
 
-// Current user provider (mock implementation)
-final currentUserProvider = StateProvider<User?>((ref) {
-  // Mock user - in production, this would come from Firebase Auth
-  return null; // Start with no user (not logged in)
+// Current user provider
+final currentUserProvider = StateNotifierProvider<AuthNotifier, User?>((ref) {
+  return AuthNotifier(ref);
 });
+
+// Auth notifier to manage authentication state
+class AuthNotifier extends StateNotifier<User?> {
+  final Ref _ref;
+  late final AuthRepository _authRepository;
+  late final SecureStorageService _secureStorage;
+
+  AuthNotifier(this._ref) : super(null) {
+    _authRepository = _ref.read(authRepositoryProvider);
+    _secureStorage = _ref.read(secureStorageProvider);
+    _loadUser();
+  }
+
+  /// Load user from secure storage on app start
+  Future<void> _loadUser() async {
+    final isLoggedIn = await _secureStorage.isLoggedIn();
+    if (isLoggedIn) {
+      // TODO: Fetch user details from API
+      // For now, user will be set after login/register
+    }
+  }
+
+  /// Set user (called after successful login/register)
+  void setUser(User user) {
+    state = user;
+  }
+
+  /// Clear user (logout)
+  Future<void> logout() async {
+    await _authRepository.logout();
+    state = null;
+  }
+}
 
 // Is authenticated provider
 final isAuthenticatedProvider = Provider<bool>((ref) {
@@ -104,23 +140,3 @@ final favoriteEventsNotifierProvider =
     StateNotifierProvider<FavoriteEventNotifier, List<String>>((ref) {
   return FavoriteEventNotifier();
 });
-
-// Mock login function
-Future<User> mockLogin({required String email, String? password, String? phoneNumber}) async {
-  await Future.delayed(const Duration(seconds: 1));
-  
-  return User(
-    id: 'user_${DateTime.now().millisecondsSinceEpoch}',
-    email: email,
-    phoneNumber: phoneNumber,
-    displayName: email.split('@')[0],
-    userType: UserType.local,
-    membershipTier: MembershipTier.free,
-    createdAt: DateTime.now(),
-  );
-}
-
-// Mock logout function
-Future<void> mockLogout() async {
-  await Future.delayed(const Duration(milliseconds: 500));
-}

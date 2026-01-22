@@ -10,6 +10,13 @@ import '../features/events/presentation/screens/event_detail_screen.dart';
 import '../features/events/presentation/screens/ticket_purchase_screen.dart';
 import '../features/membership/presentation/screens/membership_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
+import '../features/profile/presentation/screens/edit_profile_screen.dart';
+import '../features/profile/presentation/screens/favorites_screen.dart';
+import '../features/profile/presentation/screens/notifications_screen.dart';
+import '../features/profile/presentation/screens/privacy_screen.dart';
+import '../features/profile/presentation/screens/about_us_screen.dart';
+import '../features/profile/presentation/screens/privacy_policy_screen.dart';
+import '../features/profile/presentation/screens/terms_of_service_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/signup_screen.dart';
 import '../features/auth/presentation/screens/signup_success_screen.dart';
@@ -21,7 +28,6 @@ import '../core/widgets/bottom_nav_bar.dart';
 part 'router.g.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
-final _shellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'shell');
 
 @riverpod
 GoRouter router(RouterRef ref) {
@@ -135,6 +141,48 @@ GoRouter router(RouterRef ref) {
                 pageBuilder: (context, state) => const NoTransitionPage(
                   child: ProfileScreen(),
                 ),
+                routes: [
+                  GoRoute(
+                    path: 'bookings',
+                    name: 'profile-bookings',
+                    builder: (context, state) => const BookingsListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'edit',
+                    name: 'profile-edit',
+                    builder: (context, state) => const EditProfileScreen(),
+                  ),
+                  GoRoute(
+                    path: 'favorites',
+                    name: 'profile-favorites',
+                    builder: (context, state) => const FavoritesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'notifications',
+                    name: 'profile-notifications',
+                    builder: (context, state) => const NotificationsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'privacy',
+                    name: 'profile-privacy',
+                    builder: (context, state) => const PrivacyScreen(),
+                  ),
+                  GoRoute(
+                    path: 'about',
+                    name: 'profile-about',
+                    builder: (context, state) => const AboutUsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'privacy-policy',
+                    name: 'privacy-policy',
+                    builder: (context, state) => const PrivacyPolicyScreen(),
+                  ),
+                  GoRoute(
+                    path: 'terms-of-service',
+                    name: 'terms-of-service',
+                    builder: (context, state) => const TermsOfServiceScreen(),
+                  ),
+                ],
               ),
             ],
           ),

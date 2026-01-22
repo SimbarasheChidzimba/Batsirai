@@ -36,31 +36,47 @@ class EventCard extends ConsumerWidget {
               children: [
                 AspectRatio(
                   aspectRatio: 16 / 9,
-                  child: CachedNetworkImage(
-                    imageUrl: event.images.first,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: AppColors.surfaceVariant,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: AppColors.surfaceVariant,
-                      child: Icon(
-                        PhosphorIcons.ticket(),
-                        size: 48,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
+                  child: event.images.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: event.images.first,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: AppColors.surfaceVariant,
+                            child: const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: AppColors.surfaceVariant,
+                            child: Icon(
+                              PhosphorIcons.ticket(),
+                              size: 48,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: AppColors.surfaceVariant,
+                          child: Icon(
+                            PhosphorIcons.ticket(),
+                            size: 48,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                 ),
                 
                 // Gradient overlay
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: AppColors.imageOverlay,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          AppColors.imageOverlay,
+                        ],
+                      ),
                     ),
                   ),
                 ),

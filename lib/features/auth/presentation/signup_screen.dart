@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'providers/auth_providers.dart';
+import 'package:batsirai_app/features/auth/data/providers/auth_repository_provider.dart';
 import '../../../core/constants/app_constants.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
@@ -37,26 +38,46 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    
+    final authRepository = ref.read(authRepositoryProvider);
+    final authNotifier = ref.read(currentUserProvider.notifier);
+    
     try {
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
-      
-      final user = await mockLogin(
-        email: _emailController.text,
+      final response = await authRepository.register(
+        email: _emailController.text.trim(),
         password: _passwordController.text,
-        phoneNumber: _phoneController.text,
+        fullName: _nameController.text.trim(),
+        phoneNumber: _phoneController.text.trim(),
+        isDiaspora: false, // TODO: Add UI toggle for diaspora users
       );
-      
-      ref.read(currentUserProvider.notifier).state = user;
-      
-      if (mounted) {
-        // Navigate to success screen then home
-        context.pushReplacement('/signup-success');
+
+      if (response.success && response.user != null) {
+        // Set user in state
+        authNotifier.setUser(response.user!);
+        
+        if (mounted) {
+          // Navigate to success screen then home
+          context.pushReplacement('/signup-success');
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message ?? 'Registration failed'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign up failed: $e')),
+          SnackBar(
+            content: Text('An unexpected error occurred: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {
@@ -110,10 +131,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   controller: _phoneController,
                   decoration: const InputDecoration(
                     labelText: 'Phone Number',
+                    hintText: '+263771296986',
                     prefixIcon: Icon(Icons.phone),
                   ),
                   keyboardType: TextInputType.phone,
-                  validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                  validator: (v) {
+                    if (v?.isEmpty ?? true) return 'Required';
+                    // Basic phone validation
+                    if (!v!.startsWith('+')) {
+                      return 'Phone number must start with +';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: Spacing.md),
                 TextFormField(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'providers/auth_providers.dart';
+import 'package:batsirai_app/features/auth/data/providers/auth_repository_provider.dart';
 import '../../../core/constants/app_constants.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -29,14 +29,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    
+    final authRepository = ref.read(authRepositoryProvider);
+    final authNotifier = ref.read(currentUserProvider.notifier);
+    
     try {
-      final user = await mockLogin(email: _emailController.text);
-      ref.read(currentUserProvider.notifier).state = user;
-      if (mounted) context.go('/');
+      final response = await authRepository.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      if (response.success && response.user != null) {
+        // Set user in state
+        authNotifier.setUser(response.user!);
+        
+        if (mounted) {
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Login successful!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Navigate to home
+          context.go('/');
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message ?? 'Login failed'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: $e')),
+          SnackBar(
+            content: Text('An unexpected error occurred: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {

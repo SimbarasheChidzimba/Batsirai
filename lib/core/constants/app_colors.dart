@@ -64,10 +64,12 @@ class AppColors {
 
   // Special Colors
   static const Color rating = Color(0xFFFFC107); // Amber for stars
+  static const Color star = Color(0xFFFFC107); // Amber for stars (alias)
   static const Color discount = Color(0xFFE91E63); // Pink for discounts
   static const Color premium = Color(0xFF9C27B0); // Purple for premium features
   static const Color trending = Color(0xFFFF5722); // Orange for trending
   static const Color nearbyDot = Color(0xFF4CAF50); // Green for "near me" indicator
+  static const Color imageOverlay = Color(0x80000000); // 50% black overlay for images
 
   // Price Level Colors
   static const Color priceBudget = Color(0xFF4CAF50);

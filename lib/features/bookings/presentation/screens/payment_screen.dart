@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../providers/booking_providers.dart';
+import '../../domain/booking.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
@@ -65,47 +66,80 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     // Simulate payment processing
     await Future.delayed(const Duration(seconds: 2));
 
-    // Create booking after payment
-    if (widget.type == 'restaurant') {
-      final booking = await createRestaurantBooking(
-        userId: user.id,
-        restaurantId: widget.bookingData['restaurantId'],
-        restaurantName: widget.bookingData['restaurantName'],
-        bookingDate: widget.bookingData['bookingDate'],
-        bookingTime: widget.bookingData['bookingTime'],
-        partySize: widget.bookingData['partySize'],
-        specialRequests: widget.bookingData['specialRequests'],
-      );
-      ref.read(bookingsProvider.notifier).addBooking(booking);
-      
-      if (mounted) {
-        setState(() => _isProcessing = false);
-        context.pushReplacement(
-          '/booking-success',
-          extra: {
-            'type': widget.type,
-            'bookingData': {
-              ...widget.bookingData,
-              'confirmationCode': booking.confirmationCode,
-            },
-            'amount': widget.amount,
-          },
+    try {
+      // Create booking after payment
+      if (widget.type == 'restaurant') {
+        final booking = await createRestaurantBooking(
+          userId: user.id,
+          restaurantId: widget.bookingData['restaurantId'],
+          restaurantName: widget.bookingData['restaurantName'],
+          bookingDate: widget.bookingData['bookingDate'],
+          bookingTime: widget.bookingData['bookingTime'],
+          partySize: widget.bookingData['partySize'],
+          specialRequests: widget.bookingData['specialRequests'],
         );
+        await ref.read(restaurantBookingsProvider.notifier).addBooking(booking);
+        
+        if (mounted) {
+          setState(() => _isProcessing = false);
+          context.pushReplacement(
+            '/booking-success',
+            extra: {
+              'type': widget.type,
+              'bookingData': {
+                ...widget.bookingData,
+                'confirmationCode': booking.confirmationCode,
+              },
+              'amount': widget.amount,
+            },
+          );
+        }
+      } else {
+        // Event booking - create event booking with tickets
+        final tickets = (widget.bookingData['tickets'] as List<Map<String, dynamic>>)
+            .map((ticketData) => EventTicket(
+                  ticketTierId: ticketData['tierId'],
+                  tierName: ticketData['tierName'],
+                  price: ticketData['price'] as double,
+                  quantity: ticketData['quantity'] as int,
+                ))
+            .toList();
+
+        final eventBooking = await createEventBooking(
+          userId: user.id,
+          eventId: widget.bookingData['eventId'],
+          eventTitle: widget.bookingData['eventTitle'],
+          eventDate: widget.bookingData['eventDate'],
+          tickets: tickets,
+          totalAmount: widget.amount,
+        );
+        
+        await ref.read(eventBookingsProvider.notifier).addBooking(eventBooking);
+        
+        if (mounted) {
+          setState(() => _isProcessing = false);
+          context.pushReplacement(
+            '/booking-success',
+            extra: {
+              'type': widget.type,
+              'bookingData': {
+                ...widget.bookingData,
+                'confirmationCode': eventBooking.confirmationCode,
+                'qrCode': eventBooking.qrCode,
+              },
+              'amount': widget.amount,
+            },
+          );
+        }
       }
-    } else {
-      // Event booking - for now just show success
+    } catch (e) {
       if (mounted) {
         setState(() => _isProcessing = false);
-        context.pushReplacement(
-          '/booking-success',
-          extra: {
-            'type': widget.type,
-            'bookingData': {
-              ...widget.bookingData,
-              'confirmationCode': DateTime.now().millisecondsSinceEpoch.toString().substring(6),
-            },
-            'amount': widget.amount,
-          },
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error processing booking: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

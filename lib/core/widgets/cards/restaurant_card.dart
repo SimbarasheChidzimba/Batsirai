@@ -58,10 +58,17 @@ class RestaurantCard extends ConsumerWidget {
                 ),
                 
                 // Gradient overlay
-                Positioned.fill(
+               const Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: AppColors.imageOverlay,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          AppColors.imageOverlay,
+                        ],
+                      ),
                     ),
                   ),
                 ),

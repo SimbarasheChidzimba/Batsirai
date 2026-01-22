@@ -6,6 +6,7 @@ import 'providers/event_providers.dart';
 import '../../../core/widgets/cards/event_card.dart';
 import '../../../core/widgets/loading/shimmer_loading.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/constants/app_colors.dart';
 
 class EventsScreen extends ConsumerStatefulWidget {
   const EventsScreen({super.key});

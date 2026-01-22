@@ -174,7 +174,7 @@ class AppTheme {
     ),
 
     // Card Theme
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 0,
       color: AppColors.surface,
       surfaceTintColor: AppColors.primary,
@@ -376,7 +376,7 @@ class AppTheme {
     ),
 
     // Dialog Theme
-    dialogTheme: DialogTheme(
+    dialogTheme: DialogThemeData(
       backgroundColor: AppColors.surface,
       surfaceTintColor: AppColors.primary,
       elevation: 3,
@@ -450,7 +450,7 @@ class AppTheme {
     ),
 
     // Tab Bar Theme
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: AppColors.primary,
       unselectedLabelColor: AppColors.textSecondary,
       indicatorColor: AppColors.primary,

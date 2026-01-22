@@ -5,7 +5,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'providers/event_providers.dart';
 import '../../auth/presentation/providers/auth_providers.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/widgets/loading/shimmer_loading.dart';
 import '../../../core/utils/app_utils.dart';
 
 class EventDetailScreen extends ConsumerWidget {
@@ -18,15 +20,78 @@ class EventDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final event = ref.watch(eventByIdProvider(eventId));
+    // Force refresh to show loading state if needed
+    final eventAsync = ref.watch(eventByIdProvider(eventId));
     final isFavorite = ref.watch(isEventFavoriteProvider(eventId));
 
-    if (event == null) {
-      return Scaffold(
+    return eventAsync.when(
+      data: (event) {
+        if (event == null) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    PhosphorIcons.warning(),
+                    size: 64,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  const Text('Event not found'),
+                  const SizedBox(height: Spacing.md),
+                  ElevatedButton(
+                    onPressed: () => context.pop(),
+                    child: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return _buildEventDetail(context, ref, event, eventId, isFavorite);
+      },
+      loading: () => const DetailScreenShimmer(),
+      error: (error, stack) => Scaffold(
         appBar: AppBar(),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                PhosphorIcons.warning(),
+                size: 64,
+                color: Colors.red,
+              ),
+              const SizedBox(height: Spacing.md),
+              Padding(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Text(
+                  'Error loading event: $error',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: Spacing.md),
+              ElevatedButton(
+                onPressed: () => ref.invalidate(eventByIdProvider(eventId)),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEventDetail(
+    BuildContext context,
+    WidgetRef ref,
+    event,
+    String eventId,
+    bool isFavorite,
+  ) {
 
     return Scaffold(
       body: CustomScrollView(
@@ -35,10 +100,32 @@ class EventDetailScreen extends ConsumerWidget {
             expandedHeight: 300,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: CachedNetworkImage(
-                imageUrl: event.images.first,
-                fit: BoxFit.cover,
-              ),
+              background: event.images.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: event.images.first,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => const ShimmerLoading(
+                        width: double.infinity,
+                        height: double.infinity,
+                        borderRadius: BorderRadius.zero,
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: AppColors.surfaceVariant,
+                        child: Icon(
+                          PhosphorIcons.image(),
+                          size: 64,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : Container(
+                      color: AppColors.surfaceVariant,
+                      child: Icon(
+                        PhosphorIcons.image(),
+                        size: 64,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
             ),
             actions: [
               IconButton(

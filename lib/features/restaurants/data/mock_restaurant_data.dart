@@ -1,4 +1,3 @@
-import '../../../models/restaurant.dart';
 import '../domain/restaurant.dart';
 
 class MockRestaurantData {

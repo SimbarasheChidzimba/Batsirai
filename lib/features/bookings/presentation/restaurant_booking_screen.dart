@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/app_utils.dart';
 
 class RestaurantBookingScreen extends StatefulWidget {

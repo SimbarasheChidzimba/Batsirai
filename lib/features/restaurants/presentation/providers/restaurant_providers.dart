@@ -1,8 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../models/restaurant.dart';
+import '../../domain/restaurant.dart';
 import '../../data/mock_restaurant_data.dart';
-import '../domain/restaurant.dart';
-import '../data/mock_restaurant_data.dart';
 
 // Restaurants list provider
 final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {

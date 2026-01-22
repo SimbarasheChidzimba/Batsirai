@@ -1,45 +1,93 @@
+import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../domain/event.dart';
-import '../data/mock_event_data.dart';
+import '../../domain/event.dart';
+import '../../data/providers/events_repository_provider.dart';
 
-// All events provider
+// All events provider - fetches from API
 final eventsProvider = FutureProvider<List<Event>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 800));
-  return MockEventData.events;
+  try {
+    print('🔄 eventsProvider: Fetching events...');
+    final repository = ref.watch(eventsRepositoryProvider);
+    final events = await repository.listEvents();
+    print('✅ eventsProvider: Got ${events.length} events');
+    return events;
+  } catch (e, stack) {
+    print('❌ eventsProvider Error: $e');
+    print('   Stack: $stack');
+    rethrow;
+  }
 });
 
-// Upcoming events provider
-final upcomingEventsProvider = FutureProvider<List<Event>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 600));
-  return MockEventData.getUpcomingEvents();
-});
-
-// Featured events provider
-final featuredEventsProvider = FutureProvider<List<Event>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 500));
-  return MockEventData.getFeaturedEvents();
-});
-
-// Today's events provider
-final todayEventsProvider = FutureProvider<List<Event>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 400));
-  return MockEventData.getTodayEvents();
-});
-
-// This weekend events provider
-final thisWeekendEventsProvider = FutureProvider<List<Event>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 400));
-  return MockEventData.getThisWeekendEvents();
-});
-
-// Event by ID provider
-final eventByIdProvider = Provider.family<Event?, String>((ref, id) {
+// Upcoming events provider - filters from API data
+final upcomingEventsProvider = Provider<AsyncValue<List<Event>>>((ref) {
   final eventsAsync = ref.watch(eventsProvider);
   return eventsAsync.when(
-    data: (events) => events.where((e) => e.id == id).firstOrNull,
-    loading: () => null,
-    error: (_, __) => null,
+    data: (events) {
+      print('🔄 upcomingEventsProvider: Filtering ${events.length} events');
+      final now = DateTime.now();
+      final filtered = events.where((e) => 
+        e.status == EventStatus.upcoming && 
+        e.startDate.isAfter(now)
+      ).toList();
+      print('✅ upcomingEventsProvider: ${filtered.length} upcoming events');
+      return AsyncValue.data(filtered);
+    },
+    loading: () {
+      print('⏳ upcomingEventsProvider: Loading...');
+      return const AsyncValue.loading();
+    },
+    error: (error, stack) {
+      print('❌ upcomingEventsProvider Error: $error');
+      print('   Stack: $stack');
+      return AsyncValue.error(error, stack);
+    },
   );
+});
+
+// Featured events provider - filters from API data
+final featuredEventsProvider = FutureProvider<List<Event>>((ref) async {
+  final eventsAsync = ref.watch(eventsProvider);
+  return eventsAsync.when(
+    data: (events) => events.where((e) => e.isFeatured).toList(),
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+// Today's events provider - filters from API data
+final todayEventsProvider = FutureProvider<List<Event>>((ref) async {
+  final eventsAsync = ref.watch(eventsProvider);
+  return eventsAsync.when(
+    data: (events) => events.where((e) => e.isToday).toList(),
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+// This weekend events provider - filters from API data
+final thisWeekendEventsProvider = FutureProvider<List<Event>>((ref) async {
+  final eventsAsync = ref.watch(eventsProvider);
+  return eventsAsync.when(
+    data: (events) => events.where((e) => e.isThisWeekend).toList(),
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
+
+// Event by ID provider - fetches from API
+final eventByIdProvider = FutureProvider.family<Event?, String>((ref, id) async {
+  try {
+    final repository = ref.watch(eventsRepositoryProvider);
+    return await repository.getEventDetail(id);
+  } catch (e) {
+    // If API fails, fallback to checking cached events list
+    final eventsAsync = ref.watch(eventsProvider);
+    return eventsAsync.when(
+      data: (events) => events.where((e) => e.id == id).firstOrNull,
+      loading: () => null,
+      error: (_, __) => null,
+    );
+  }
 });
 
 // Events by category provider
@@ -54,13 +102,46 @@ final eventsByCategoryProvider = Provider.family<List<Event>, EventCategory>(
   },
 );
 
-// Nearby events provider
+// Nearby events provider - filters from API data by location
 final nearbyEventsProvider = FutureProvider.family<List<Event>, (double, double)>(
   (ref, location) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    return MockEventData.getNearbyEvents(location.$1, location.$2);
+    final eventsAsync = ref.watch(eventsProvider);
+    return eventsAsync.when(
+      data: (events) {
+        // Simple distance calculation (can be improved with proper geolocation)
+        final userLat = location.$1;
+        final userLng = location.$2;
+        
+        // Filter events within reasonable distance (e.g., 50km)
+        return events.where((e) {
+          final distance = _calculateDistance(
+            userLat, userLng, 
+            e.latitude, e.longitude
+          );
+          return distance <= 50.0; // 50km radius
+        }).toList();
+      },
+      loading: () => [],
+      error: (_, __) => [],
+    );
   },
 );
+
+// Helper function to calculate distance between two coordinates (Haversine formula)
+double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  const double earthRadius = 6371; // km
+  final dLat = _toRadians(lat2 - lat1);
+  final dLon = _toRadians(lon2 - lon1);
+  
+  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) *
+      math.sin(dLon / 2) * math.sin(dLon / 2);
+  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  
+  return earthRadius * c;
+}
+
+double _toRadians(double degrees) => degrees * (math.pi / 180.0);
 
 // Event search query provider
 final eventSearchQueryProvider = StateProvider<String>((ref) => '');
@@ -74,7 +155,7 @@ final filteredEventsProvider = Provider<AsyncValue<List<Event>>>((ref) {
 
   return eventsAsync.when(
     data: (events) {
-      var filtered = events;
+      var filtered = List<Event>.from(events);
 
       // Search filter
       if (searchQuery.isNotEmpty) {
@@ -138,3 +219,51 @@ enum EventDateFilter {
 
 final selectedEventCategoriesProvider = StateProvider<List<EventCategory>>((ref) => []);
 final selectedDateFilterProvider = StateProvider<EventDateFilter?>((ref) => null);
+
+// Provider to extract available categories from API events
+final availableEventCategoriesProvider = Provider<List<EventCategory>>((ref) {
+  final eventsAsync = ref.watch(eventsProvider);
+  return eventsAsync.when(
+    data: (events) {
+      // Extract unique categories from events
+      final categories = events.map((e) => e.category).toSet().toList();
+      // Sort by category name for consistent display
+      categories.sort((a, b) {
+        final eventA = Event(
+          id: '',
+          title: '',
+          description: '',
+          images: [],
+          category: a,
+          status: EventStatus.upcoming,
+          startDate: DateTime.now(),
+          endDate: DateTime.now(),
+          venueName: '',
+          venueAddress: '',
+          latitude: 0,
+          longitude: 0,
+          ticketTiers: [],
+        );
+        final eventB = Event(
+          id: '',
+          title: '',
+          description: '',
+          images: [],
+          category: b,
+          status: EventStatus.upcoming,
+          startDate: DateTime.now(),
+          endDate: DateTime.now(),
+          venueName: '',
+          venueAddress: '',
+          latitude: 0,
+          longitude: 0,
+          ticketTiers: [],
+        );
+        return eventA.categoryName.compareTo(eventB.categoryName);
+      });
+      return categories;
+    },
+    loading: () => [],
+    error: (_, __) => [],
+  );
+});
