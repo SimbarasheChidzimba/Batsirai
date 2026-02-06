@@ -1,18 +1,47 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../domain/booking.dart';
 import 'providers/booking_providers.dart';
+import 'widgets/event_ticket_card.dart';
 
-class BookingsListScreen extends ConsumerWidget {
+/// Polling interval for booking status (e.g. pending → confirmed so "Pay commitment fee" appears)
+const _bookingStatusPollInterval = Duration(seconds: 30);
+
+class BookingsListScreen extends ConsumerStatefulWidget {
   const BookingsListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BookingsListScreen> createState() => _BookingsListScreenState();
+}
+
+class _BookingsListScreenState extends ConsumerState<BookingsListScreen> {
+  Timer? _statusPollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusPollTimer = Timer.periodic(_bookingStatusPollInterval, (_) {
+      if (!mounted) return;
+      ref.read(restaurantBookingsProvider.notifier).refresh();
+      ref.read(eventBookingsProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusPollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('My Bookings'),
@@ -20,6 +49,7 @@ class BookingsListScreen extends ConsumerWidget {
             tabs: [
               Tab(text: 'Upcoming'),
               Tab(text: 'Past'),
+              Tab(text: 'My Tickets'),
             ],
           ),
         ),
@@ -34,6 +64,74 @@ class BookingsListScreen extends ConsumerWidget {
               bookingsAsync: ref.watch(pastBookingsProvider),
               emptyMessage: 'No past bookings',
               isUpcoming: false,
+            ),
+            const _MyTicketsList(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MyTicketsList extends ConsumerWidget {
+  const _MyTicketsList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ticketsAsync = ref.watch(myTicketsProvider);
+    return ticketsAsync.when(
+      data: (tickets) {
+        if (tickets.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  PhosphorIcons.ticket(),
+                  size: 64,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No tickets yet',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                ),
+              ],
+            ),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(myTicketsProvider);
+          },
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: tickets.length,
+            itemBuilder: (context, index) {
+              final booking = tickets[index];
+              return EventTicketCard(
+                booking: booking,
+                isUpcoming: booking.eventDate.isAfter(DateTime.now()),
+              );
+            },
+          ),
+        );
+      },
+      loading: () => const _BookingsLoading(),
+      error: (error, _) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(PhosphorIcons.warning(), size: 64, color: Colors.red[300]),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading tickets',
+              style: TextStyle(color: Colors.red[600], fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => ref.invalidate(myTicketsProvider),
+              child: const Text('Retry'),
             ),
           ],
         ),
@@ -93,7 +191,7 @@ class _BookingsList extends ConsumerWidget {
                   isUpcoming: isUpcoming,
                 );
               } else if (booking is EventBooking) {
-                return _EventBookingCard(
+                return EventTicketCard(
                   booking: booking,
                   isUpcoming: isUpcoming,
                 );
@@ -232,21 +330,45 @@ class _RestaurantBookingCard extends ConsumerWidget {
                 value: booking.specialRequests!,
               ),
             ],
+            if (isUpcoming && booking.status == BookingStatus.pending) ...[
+              const Divider(),
+              Text(
+                'Waiting for the restaurant to confirm. You\'ll be able to pay the commitment fee here once confirmed.',
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ],
             if (isUpcoming && booking.status == BookingStatus.confirmed) ...[
               const Divider(),
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showCancelDialog(context, ref),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Cancel Booking'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                      ),
+                    child: FilledButton.icon(
+                      onPressed: () => _payCommitmentFee(context, ref),
+                      icon: const Icon(Icons.payment, size: 20),
+                      label: const Text('Pay Commitment Fee'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _showCancelDialog(context, ref),
+                    icon: const Icon(Icons.close, size: 20),
+                    label: const Text('Cancel'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
                     ),
                   ),
                 ],
+              ),
+            ],
+            if (booking.status == BookingStatus.completed) ...[
+              const Divider(),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _showTicket(context, ref),
+                  icon: const Icon(Icons.qr_code_2, size: 20),
+                  label: const Text('View Ticket'),
+                ),
               ),
             ],
           ],
@@ -282,6 +404,46 @@ class _RestaurantBookingCard extends ConsumerWidget {
         return Colors.blue;
       case BookingStatus.noShow:
         return Colors.grey;
+    }
+  }
+
+  Future<void> _payCommitmentFee(BuildContext context, WidgetRef ref) async {
+    try {
+      final url = await ref.read(bookingServiceProvider).payCommitmentFee(booking.id);
+      if (!context.mounted) return;
+      final success = await context.push<bool>('/stripe-checkout', extra: url);
+      if (context.mounted && success == true) {
+        ref.read(restaurantBookingsProvider.notifier).refresh();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Payment successful. Your booking is confirmed.')),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not start payment: $e')),
+      );
+    }
+  }
+
+  Future<void> _showTicket(BuildContext context, WidgetRef ref) async {
+    try {
+      final ticket =
+          await ref.read(bookingServiceProvider).getBookingTicket(booking.id);
+      if (!context.mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => _TicketSheet(
+          booking: booking,
+          ticketData: ticket,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load ticket: $e')),
+      );
     }
   }
 
@@ -315,245 +477,108 @@ class _RestaurantBookingCard extends ConsumerWidget {
   }
 }
 
-class _EventBookingCard extends ConsumerWidget {
-  final EventBooking booking;
-  final bool isUpcoming;
+class _TicketSheet extends StatelessWidget {
+  final RestaurantBooking booking;
+  final Map<String, dynamic> ticketData;
 
-  const _EventBookingCard({
+  const _TicketSheet({
     required this.booking,
-    required this.isUpcoming,
+    required this.ticketData,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget build(BuildContext context) {
+    final qrCode = ticketData['qrCode']?.toString() ??
+        ticketData['qr_code']?.toString() ??
+        ticketData['code']?.toString() ??
+        booking.confirmationCode;
+    final imageUrl = ticketData['imageUrl']?.toString() ??
+        ticketData['image_url']?.toString() ??
+        ticketData['qrImageUrl']?.toString();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.all(24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            PhosphorIcons.ticket(),
-                            size: 20,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              booking.eventTitle,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _getStatusText(booking.status),
-                        style: TextStyle(
-                          color: _getStatusColor(booking.status),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (booking.confirmationCode != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      booking.confirmationCode!,
-                      style: TextStyle(
-                        color: Colors.blue[700],
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const Divider(),
-            _InfoRow(
-              icon: PhosphorIcons.calendar(),
-              label: 'Event Date',
-              value: DateFormat('EEEE, MMMM d, yyyy').format(booking.eventDate),
-            ),
-            const SizedBox(height: 8),
-            _InfoRow(
-              icon: PhosphorIcons.ticket(),
-              label: 'Tickets',
-              value: '${booking.totalTickets} ticket${booking.totalTickets > 1 ? 's' : ''}',
-            ),
-            const SizedBox(height: 8),
-            _InfoRow(
-              icon: PhosphorIcons.currencyDollar(),
-              label: 'Total Paid',
-              value: '\$${booking.totalAmount.toStringAsFixed(2)}',
-            ),
-            if (booking.tickets.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Divider(),
-              const Text(
-                'Ticket Details:',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              ...booking.tickets.map((ticket) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '${ticket.quantity}x ${ticket.tierName}',
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        Text(
-                          '\$${ticket.totalPrice.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )),
-            ],
-            if (isUpcoming && booking.status == BookingStatus.confirmed) ...[
-              const Divider(),
-              Row(
-                children: [
-                  if (booking.qrCode != null) ...[
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showQRCode(context, booking.qrCode!),
-                        icon: const Icon(Icons.qr_code),
-                        label: const Text('View QR Code'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showCancelDialog(context, ref),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Cancel'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _getStatusText(BookingStatus status) {
-    switch (status) {
-      case BookingStatus.confirmed:
-        return 'Confirmed';
-      case BookingStatus.pending:
-        return 'Pending';
-      case BookingStatus.cancelled:
-        return 'Cancelled';
-      case BookingStatus.completed:
-        return 'Completed';
-      case BookingStatus.noShow:
-        return 'No Show';
-    }
-  }
-
-  Color _getStatusColor(BookingStatus status) {
-    switch (status) {
-      case BookingStatus.confirmed:
-        return Colors.green;
-      case BookingStatus.pending:
-        return Colors.orange;
-      case BookingStatus.cancelled:
-        return Colors.red;
-      case BookingStatus.completed:
-        return Colors.blue;
-      case BookingStatus.noShow:
-        return Colors.grey;
-    }
-  }
-
-  void _showQRCode(BuildContext context, String qrCodeData) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Event QR Code'),
-        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            QrImageView(
-              data: qrCodeData,
-              version: QrVersions.auto,
-              size: 200.0,
-              backgroundColor: Colors.white,
+            Text(
+              'Your table reservation',
+              style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Show this QR code at the event entrance',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            const SizedBox(height: 8),
+            Text(
+              booking.restaurantName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${DateFormat('EEEE, MMM d').format(booking.bookingDate)} at ${DateFormat('jm').format(booking.bookingTime)} · ${booking.partySize} guests',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
+            if (booking.confirmationCode != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Code: ${booking.confirmationCode}',
+                  style: TextStyle(
+                    color: Colors.blue[700],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            if (imageUrl != null && imageUrl.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  imageUrl,
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => _buildQrPlaceholder(context, qrCode),
+                ),
+              )
+            else if (qrCode != null && qrCode.isNotEmpty)
+              _buildQrPlaceholder(context, qrCode)
+            else
+              Icon(Icons.confirmation_number, size: 80, color: Colors.grey[400]),
+            const SizedBox(height: 24),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }
 
-  void _showCancelDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Booking'),
-        content: const Text('Are you sure you want to cancel this event booking?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await ref.read(eventBookingsProvider.notifier).cancelBooking(booking.id);
-              if (context.mounted) {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Booking cancelled')),
-              );
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Yes, Cancel'),
-          ),
-        ],
+  Widget _buildQrPlaceholder(BuildContext context, String? data) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: QrImageView(
+        data: data ?? booking.id,
+        version: QrVersions.auto,
+        size: 200,
+        backgroundColor: Colors.white,
       ),
     );
   }

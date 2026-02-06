@@ -36,13 +36,13 @@ class MembershipScreen extends ConsumerWidget {
           }
 
           return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
+        padding: const EdgeInsets.all(16),
+        children: [
               Text(
                 'Unlock Exclusive Benefits',
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
-              const SizedBox(height: 8),
+          const SizedBox(height: 8),
               const Text(
                 'Join thousands of members enjoying premium perks across Zimbabwe',
               ),
@@ -58,7 +58,7 @@ class MembershipScreen extends ConsumerWidget {
               'Unlock Exclusive Benefits',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            const SizedBox(height: 24),
+          const SizedBox(height: 24),
             ...List.generate(3, (index) => const Padding(
               padding: EdgeInsets.only(bottom: 16),
               child: ShimmerLoading(width: double.infinity, height: 200),
@@ -87,7 +87,7 @@ class MembershipScreen extends ConsumerWidget {
                 onPressed: () => ref.invalidate(membershipTiersProvider),
                 child: const Text('Retry'),
               ),
-            ],
+        ],
           ),
         ),
       ),
@@ -167,21 +167,21 @@ class MembershipScreen extends ConsumerWidget {
               ],
             ),
             if (tier.benefits.isNotEmpty) ...[
-              const SizedBox(height: 16),
+            const SizedBox(height: 16),
               ...tier.benefits.map((benefit) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
                         PhosphorIcon(
                           PhosphorIcons.check(),
                           color: AppColors.success,
                           size: 20,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(benefit)),
-                      ],
-                    ),
-                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(benefit)),
+                ],
+              ),
+            )),
             ],
             if (tier.discountPercentage != null) ...[
               const SizedBox(height: 12),
@@ -207,13 +207,13 @@ class MembershipScreen extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Subscribed to ${tier.name}!'),
                     ),
-                  );
-                },
+                );
+              },
                 style: FilledButton.styleFrom(
                   backgroundColor: tier.isPopular
                       ? AppColors.primary
@@ -222,7 +222,7 @@ class MembershipScreen extends ConsumerWidget {
                       ? Colors.white
                       : AppColors.primary,
                 ),
-                child: const Text('Subscribe'),
+              child: const Text('Subscribe'),
               ),
             ),
           ],

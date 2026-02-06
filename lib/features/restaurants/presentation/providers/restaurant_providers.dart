@@ -1,12 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/restaurant.dart';
 import '../../data/mock_restaurant_data.dart';
+import '../../data/providers/restaurants_repository_provider.dart';
 
-// Restaurants list provider
+// Restaurants list provider - uses API
 final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
-  // Simulate API call
-  await Future.delayed(const Duration(milliseconds: 800));
-  return MockRestaurantData.restaurants;
+  final repository = ref.watch(restaurantsRepositoryProvider);
+  try {
+    return await repository.listRestaurants(page: 1, limit: 20);
+  } catch (e) {
+    print('⚠️  Error fetching restaurants from API, falling back to mock data: $e');
+    // Fallback to mock data on error
+    await Future.delayed(const Duration(milliseconds: 500));
+    return MockRestaurantData.restaurants;
+  }
 });
 
 // Nearby restaurants provider
@@ -17,20 +24,45 @@ final nearbyRestaurantsProvider = FutureProvider.family<List<Restaurant>, (doubl
   },
 );
 
-// Featured restaurants provider
+// Featured restaurants provider - uses API
 final featuredRestaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 500));
-  return MockRestaurantData.getFeaturedRestaurants();
+  final repository = ref.watch(restaurantsRepositoryProvider);
+  try {
+    final restaurants = await repository.listRestaurants(page: 1, limit: 20);
+    // Filter for featured/premium restaurants, or return first 10 if none
+    final featured = restaurants.where((r) => r.isPremiumPartner).toList();
+    return featured.isNotEmpty ? featured : restaurants.take(10).toList();
+  } catch (e) {
+    print('⚠️  Error fetching featured restaurants from API, falling back to mock data: $e');
+    // Fallback to mock data on error
+    await Future.delayed(const Duration(milliseconds: 500));
+    return MockRestaurantData.getFeaturedRestaurants();
+  }
 });
 
-// Restaurant by ID provider
-final restaurantByIdProvider = Provider.family<Restaurant?, String>((ref, id) {
-  final restaurantsAsync = ref.watch(restaurantsProvider);
-  return restaurantsAsync.when(
-    data: (restaurants) => restaurants.where((r) => r.id == id).firstOrNull,
-    loading: () => null,
-    error: (_, __) => null,
-  );
+// Restaurant by ID provider - uses API
+final restaurantByIdProvider = FutureProvider.family<Restaurant?, String>((ref, id) async {
+  final repository = ref.watch(restaurantsRepositoryProvider);
+  try {
+    print('🔍 RestaurantByIdProvider: Fetching restaurant with ID: $id');
+    final restaurant = await repository.getRestaurantDetail(id);
+    print('✅ RestaurantByIdProvider: Successfully fetched restaurant: ${restaurant.name}');
+    return restaurant;
+  } catch (e, stack) {
+    print('⚠️  Error fetching restaurant detail from API: $e');
+    print('   Stack: $stack');
+    
+    // If restaurant not found, return null instead of throwing
+    // This allows the UI to show "Restaurant not found" message
+    if (e.toString().contains('Restaurant not found') || 
+        e.toString().contains('404')) {
+      print('⚠️  Restaurant not found, returning null');
+      return null;
+    }
+    
+    // For other errors, rethrow so UI can show error state
+    rethrow;
+  }
 });
 
 // Restaurants by category provider

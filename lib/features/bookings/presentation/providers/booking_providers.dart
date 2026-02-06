@@ -2,18 +2,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/booking.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/booking_service.dart';
+import '../../data/providers/bookings_repository_provider.dart';
+
+// Booking Service Provider
+final bookingServiceProvider = Provider<BookingService>((ref) {
+  final repository = ref.watch(bookingsRepositoryProvider);
+  return BookingService(repository);
+});
 
 // Restaurant Bookings State
 class RestaurantBookingsNotifier extends StateNotifier<AsyncValue<List<RestaurantBooking>>> {
-  RestaurantBookingsNotifier() : super(const AsyncValue.loading()) {
+  final BookingService _bookingService;
+  final Ref _ref;
+
+  RestaurantBookingsNotifier(this._bookingService, this._ref) : super(const AsyncValue.loading()) {
     _loadBookings();
   }
 
   Future<void> _loadBookings() async {
     state = const AsyncValue.loading();
     try {
-      // TODO: Replace with actual user ID from auth
-      final bookings = await BookingService.getRestaurantBookings('');
+      final user = _ref.read(currentUserProvider);
+      if (user == null) {
+        state = const AsyncValue.data([]);
+        return;
+      }
+      final bookings = await _bookingService.getRestaurantBookings(user.id);
       state = AsyncValue.data(bookings);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
@@ -29,9 +43,9 @@ class RestaurantBookingsNotifier extends StateNotifier<AsyncValue<List<Restauran
     }
   }
 
-  Future<void> cancelBooking(String bookingId) async {
+  Future<void> cancelBooking(String bookingId, {String? cancellationReason}) async {
     try {
-      await BookingService.cancelRestaurantBooking(bookingId);
+      await _bookingService.cancelRestaurantBooking(bookingId, cancellationReason: cancellationReason);
       final currentBookings = state.value ?? [];
       state = AsyncValue.data(
         currentBookings.map((booking) {
@@ -51,20 +65,28 @@ class RestaurantBookingsNotifier extends StateNotifier<AsyncValue<List<Restauran
 
 final restaurantBookingsProvider =
     StateNotifierProvider<RestaurantBookingsNotifier, AsyncValue<List<RestaurantBooking>>>((ref) {
-  return RestaurantBookingsNotifier();
+  final bookingService = ref.watch(bookingServiceProvider);
+  return RestaurantBookingsNotifier(bookingService, ref);
 });
 
 // Event Bookings State
 class EventBookingsNotifier extends StateNotifier<AsyncValue<List<EventBooking>>> {
-  EventBookingsNotifier() : super(const AsyncValue.loading()) {
+  final BookingService _bookingService;
+  final Ref _ref;
+
+  EventBookingsNotifier(this._bookingService, this._ref) : super(const AsyncValue.loading()) {
     _loadBookings();
   }
 
   Future<void> _loadBookings() async {
     state = const AsyncValue.loading();
     try {
-      // TODO: Replace with actual user ID from auth
-      final bookings = await BookingService.getEventBookings('');
+      final user = _ref.read(currentUserProvider);
+      if (user == null) {
+        state = const AsyncValue.data([]);
+        return;
+      }
+      final bookings = await _bookingService.getEventBookings(user.id);
       state = AsyncValue.data(bookings);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
@@ -80,9 +102,9 @@ class EventBookingsNotifier extends StateNotifier<AsyncValue<List<EventBooking>>
     }
   }
 
-  Future<void> cancelBooking(String bookingId) async {
+  Future<void> cancelBooking(String bookingId, {String? cancellationReason}) async {
     try {
-      await BookingService.cancelEventBooking(bookingId);
+      await _bookingService.cancelEventBooking(bookingId, cancellationReason: cancellationReason);
       final currentBookings = state.value ?? [];
       state = AsyncValue.data(
         currentBookings.map((booking) {
@@ -102,13 +124,23 @@ class EventBookingsNotifier extends StateNotifier<AsyncValue<List<EventBooking>>
 
 final eventBookingsProvider =
     StateNotifierProvider<EventBookingsNotifier, AsyncValue<List<EventBooking>>>((ref) {
-  return EventBookingsNotifier();
+  final bookingService = ref.watch(bookingServiceProvider);
+  return EventBookingsNotifier(bookingService, ref);
 });
 
 // Legacy provider for backward compatibility (restaurant bookings only)
 final bookingsProvider =
     StateNotifierProvider<RestaurantBookingsNotifier, AsyncValue<List<RestaurantBooking>>>((ref) {
-  return RestaurantBookingsNotifier();
+  final bookingService = ref.watch(bookingServiceProvider);
+  return RestaurantBookingsNotifier(bookingService, ref);
+});
+
+// My tickets provider - GET /tickets/my-tickets
+final myTicketsProvider = FutureProvider<List<EventBooking>>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return [];
+  final bookingService = ref.read(bookingServiceProvider);
+  return await bookingService.getMyTickets();
 });
 
 // User's restaurant bookings provider
@@ -157,14 +189,16 @@ final upcomingBookingsProvider = Provider<AsyncValue<List<dynamic>>>((ref) {
       return eventBookingsAsync.when(
         data: (eventBookings) {
           final now = DateTime.now();
+          final todayStart = DateTime(now.year, now.month, now.day);
           final upcoming = <dynamic>[];
           
-          // Add upcoming restaurant bookings
+          // Add upcoming restaurant bookings: pending (always show) or confirmed/completed with date today or future
           upcoming.addAll(
-            restaurantBookings.where((b) =>
-              b.status == BookingStatus.confirmed &&
-              b.bookingDate.isAfter(now),
-            ),
+            restaurantBookings.where((b) {
+              if (b.status == BookingStatus.pending) return true;
+              if (b.status != BookingStatus.confirmed && b.status != BookingStatus.completed) return false;
+              return !b.bookingDate.isBefore(todayStart);
+            }),
           );
           
           // Add upcoming event bookings
@@ -256,8 +290,9 @@ Future<RestaurantBooking> createRestaurantBooking({
   required DateTime bookingTime,
   required int partySize,
   String? specialRequests,
+  required BookingService bookingService,
 }) async {
-  return await BookingService.createRestaurantBooking(
+  return await bookingService.createRestaurantBooking(
     userId: userId,
     restaurantId: restaurantId,
     restaurantName: restaurantName,
@@ -276,8 +311,9 @@ Future<EventBooking> createEventBooking({
   required DateTime eventDate,
   required List<EventTicket> tickets,
   required double totalAmount,
+  required BookingService bookingService,
 }) async {
-  return await BookingService.createEventBooking(
+  return await bookingService.createEventBooking(
     userId: userId,
     eventId: eventId,
     eventTitle: eventTitle,
@@ -286,3 +322,6 @@ Future<EventBooking> createEventBooking({
     totalAmount: totalAmount,
   );
 }
+
+// Pending booking data provider - stores booking data when user needs to login first
+final pendingBookingDataProvider = StateProvider<Map<String, dynamic>?>((ref) => null);

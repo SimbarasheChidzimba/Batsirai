@@ -21,6 +21,23 @@ class PaymentScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
+  
+  // Factory constructor to handle pending booking data
+  static Widget fromPendingData(Map<String, dynamic>? pendingData) {
+    if (pendingData == null) {
+      // Fallback - should not happen, but handle gracefully
+      return const PaymentScreen(
+        type: 'restaurant',
+        bookingData: {},
+        amount: 0.0,
+      );
+    }
+    return PaymentScreen(
+      type: pendingData['type'] ?? 'restaurant',
+      bookingData: pendingData['bookingData'] ?? {},
+      amount: (pendingData['amount'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
 }
 
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
@@ -30,6 +47,34 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   final _cvvController = TextEditingController();
   final _cardNameController = TextEditingController();
   bool _isProcessing = false;
+  Map<String, dynamic>? _actualBookingData;
+  String? _actualType;
+  double? _actualAmount;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize with widget data first
+    _actualBookingData = widget.bookingData;
+    _actualType = widget.type;
+    _actualAmount = widget.amount;
+    
+    // Check for pending booking data if no valid data was passed via extra
+    if (widget.bookingData.isEmpty || widget.amount == 0.0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pendingData = ref.read(pendingBookingDataProvider);
+        if (pendingData != null) {
+          setState(() {
+            _actualBookingData = pendingData['bookingData'] as Map<String, dynamic>? ?? {};
+            _actualType = pendingData['type'] as String? ?? 'restaurant';
+            _actualAmount = (pendingData['amount'] as num?)?.toDouble() ?? 0.0;
+          });
+          // Clear pending data after using it
+          ref.read(pendingBookingDataProvider.notifier).state = null;
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -39,6 +84,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     _cardNameController.dispose();
     super.dispose();
   }
+  
+  String get _type => _actualType ?? widget.type;
+  Map<String, dynamic> get _bookingData => _actualBookingData ?? widget.bookingData;
+  double get _amount => _actualAmount ?? widget.amount;
 
   Future<void> _processPayment() async {
     if (_selectedPaymentMethod == 'card') {
@@ -55,9 +104,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
 
     final user = ref.read(currentUserProvider);
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to complete payment')),
-      );
+      // Store current payment data for resuming after login
+      ref.read(pendingBookingDataProvider.notifier).state = {
+        'type': widget.type,
+        'bookingData': widget.bookingData,
+        'amount': widget.amount,
+      };
+      
+      // Redirect to login with return path
+      context.push('/login?returnPath=/payment');
       return;
     }
 
@@ -67,16 +122,37 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     await Future.delayed(const Duration(seconds: 2));
 
     try {
+      final bookingService = ref.read(bookingServiceProvider);
+      
       // Create booking after payment
-      if (widget.type == 'restaurant') {
-        final booking = await createRestaurantBooking(
+      if (_type == 'restaurant') {
+        // Parse dates if they're strings (from JSON serialization)
+        dynamic bookingDateValue = _bookingData['bookingDate'];
+        dynamic bookingTimeValue = _bookingData['bookingTime'];
+        
+        DateTime? bookingDate;
+        DateTime? bookingTime;
+        
+        if (bookingDateValue is String) {
+          bookingDate = DateTime.parse(bookingDateValue);
+        } else if (bookingDateValue is DateTime) {
+          bookingDate = bookingDateValue;
+        }
+        
+        if (bookingTimeValue is String) {
+          bookingTime = DateTime.parse(bookingTimeValue);
+        } else if (bookingTimeValue is DateTime) {
+          bookingTime = bookingTimeValue;
+        }
+        
+        final booking = await bookingService.createRestaurantBooking(
           userId: user.id,
-          restaurantId: widget.bookingData['restaurantId'],
-          restaurantName: widget.bookingData['restaurantName'],
-          bookingDate: widget.bookingData['bookingDate'],
-          bookingTime: widget.bookingData['bookingTime'],
-          partySize: widget.bookingData['partySize'],
-          specialRequests: widget.bookingData['specialRequests'],
+          restaurantId: _bookingData['restaurantId'],
+          restaurantName: _bookingData['restaurantName'],
+          bookingDate: bookingDate!,
+          bookingTime: bookingTime!,
+          partySize: _bookingData['partySize'],
+          specialRequests: _bookingData['specialRequests'],
         );
         await ref.read(restaurantBookingsProvider.notifier).addBooking(booking);
         
@@ -85,18 +161,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           context.pushReplacement(
             '/booking-success',
             extra: {
-              'type': widget.type,
+              'type': _type,
               'bookingData': {
-                ...widget.bookingData,
+                ..._bookingData,
                 'confirmationCode': booking.confirmationCode,
               },
-              'amount': widget.amount,
+              'amount': _amount,
             },
           );
         }
       } else {
         // Event booking - create event booking with tickets
-        final tickets = (widget.bookingData['tickets'] as List<Map<String, dynamic>>)
+        final tickets = (_bookingData['tickets'] as List<Map<String, dynamic>>)
             .map((ticketData) => EventTicket(
                   ticketTierId: ticketData['tierId'],
                   tierName: ticketData['tierName'],
@@ -105,13 +181,25 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ))
             .toList();
 
-        final eventBooking = await createEventBooking(
+        // Parse event date if it's a string
+        dynamic eventDateValue = _bookingData['eventDate'];
+        DateTime eventDate;
+        
+        if (eventDateValue is String) {
+          eventDate = DateTime.parse(eventDateValue);
+        } else if (eventDateValue is DateTime) {
+          eventDate = eventDateValue;
+        } else {
+          throw ArgumentError('Invalid event date format: $eventDateValue');
+        }
+
+        final eventBooking = await bookingService.createEventBooking(
           userId: user.id,
-          eventId: widget.bookingData['eventId'],
-          eventTitle: widget.bookingData['eventTitle'],
-          eventDate: widget.bookingData['eventDate'],
+          eventId: _bookingData['eventId'],
+          eventTitle: _bookingData['eventTitle'],
+          eventDate: eventDate,
           tickets: tickets,
-          totalAmount: widget.amount,
+          totalAmount: _amount,
         );
         
         await ref.read(eventBookingsProvider.notifier).addBooking(eventBooking);
@@ -121,13 +209,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
           context.pushReplacement(
             '/booking-success',
             extra: {
-              'type': widget.type,
+              'type': _type,
               'bookingData': {
-                ...widget.bookingData,
+                ..._bookingData,
                 'confirmationCode': eventBooking.confirmationCode,
                 'qrCode': eventBooking.qrCode,
               },
-              'amount': widget.amount,
+              'amount': _amount,
             },
           );
         }
@@ -166,15 +254,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const Divider(),
-                    if (widget.type == 'restaurant') ...[
-                      _SummaryRow('Restaurant', widget.bookingData['restaurantName']),
-                      _SummaryRow('Date', _formatDate(widget.bookingData['bookingDate'])),
-                      _SummaryRow('Time', _formatTime(widget.bookingData['bookingTime'])),
-                      _SummaryRow('Party Size', '${widget.bookingData['partySize']} guests'),
+                    if (_type == 'restaurant') ...[
+                      _SummaryRow('Restaurant', _bookingData['restaurantName']),
+                      _SummaryRow('Date', _formatDate(_parseDate(_bookingData['bookingDate']))),
+                      _SummaryRow('Time', _formatTime(_parseDate(_bookingData['bookingTime']))),
+                      _SummaryRow('Party Size', '${_bookingData['partySize']} guests'),
                     ] else ...[
-                      _SummaryRow('Event', widget.bookingData['eventTitle']),
-                      _SummaryRow('Date', _formatDate(widget.bookingData['eventDate'])),
-                      _SummaryRow('Tickets', '${widget.bookingData['totalTickets']} tickets'),
+                      _SummaryRow('Event', _bookingData['eventTitle']),
+                      _SummaryRow('Date', _formatDate(_parseDate(_bookingData['eventDate']))),
+                      _SummaryRow('Tickets', '${_bookingData['totalTickets']} tickets'),
                     ],
                     const Divider(),
                     Row(
@@ -187,7 +275,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                               ),
                         ),
                         Text(
-                          '\$${widget.amount.toStringAsFixed(2)}',
+                          '\$${_amount.toStringAsFixed(2)}',
                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: Theme.of(context).colorScheme.primary,
@@ -295,11 +383,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                     width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text('Pay \$${widget.amount.toStringAsFixed(2)}'),
+                : Text('Pay \$${_amount.toStringAsFixed(2)}'),
           ),
         ),
       ),
     );
+  }
+
+  DateTime _parseDate(dynamic date) {
+    if (date is DateTime) return date;
+    if (date is String) return DateTime.parse(date);
+    throw ArgumentError('Invalid date format: $date');
   }
 
   String _formatDate(DateTime date) {

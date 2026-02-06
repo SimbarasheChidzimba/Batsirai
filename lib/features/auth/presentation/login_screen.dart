@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'providers/auth_providers.dart';
 import 'package:batsirai_app/features/auth/data/providers/auth_repository_provider.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../bookings/presentation/providers/booking_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -51,8 +52,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          // Navigate to home
-          context.go('/');
+          
+          // Check for return path and pending booking data
+          final returnPath = GoRouterState.of(context).uri.queryParameters['returnPath'];
+          final pendingBookingData = ref.read(pendingBookingDataProvider);
+          
+          if (returnPath != null && pendingBookingData != null) {
+            // Clear pending data
+            ref.read(pendingBookingDataProvider.notifier).state = null;
+            
+            // Navigate to return path with booking data
+            context.pushReplacement(
+              returnPath,
+              extra: pendingBookingData,
+            );
+          } else if (returnPath != null) {
+            // Just navigate to return path
+            context.pushReplacement(returnPath);
+          } else {
+            // Navigate to home
+            context.go('/');
+          }
         }
       } else {
         if (mounted) {

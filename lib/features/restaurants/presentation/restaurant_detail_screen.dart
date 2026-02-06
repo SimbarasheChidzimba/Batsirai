@@ -9,6 +9,7 @@ import 'providers/restaurant_providers.dart';
 import '../../auth/presentation/providers/auth_providers.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/app_utils.dart';
+import '../domain/restaurant.dart';
 
 class RestaurantDetailScreen extends ConsumerWidget {
   final String restaurantId;
@@ -20,16 +21,64 @@ class RestaurantDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final restaurant = ref.watch(restaurantByIdProvider(restaurantId));
+    final restaurantAsync = ref.watch(restaurantByIdProvider(restaurantId));
     final isPremium = ref.watch(isPremiumMemberProvider);
-    final isFavorite = ref.watch(isRestaurantFavoriteProvider(restaurantId));
-
-    if (restaurant == null) {
-      return Scaffold(
+    
+    return restaurantAsync.when(
+      data: (restaurant) {
+        if (restaurant == null) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.restaurant, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('Restaurant not found'),
+                ],
+              ),
+            ),
+          );
+        }
+        
+        final isFavorite = ref.watch(isRestaurantFavoriteProvider(restaurantId));
+        return _buildRestaurantDetail(context, restaurant, isPremium, isFavorite, ref);
+      },
+      loading: () => Scaffold(
         appBar: AppBar(),
         body: const Center(child: CircularProgressIndicator()),
-      );
-    }
+      ),
+      error: (error, stack) => Scaffold(
+        appBar: AppBar(),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(PhosphorIcons.warningCircle(), size: 64, color: AppColors.error),
+              const SizedBox(height: 16),
+              Text('Error loading restaurant', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(error.toString(), style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => ref.refresh(restaurantByIdProvider(restaurantId)),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRestaurantDetail(
+    BuildContext context,
+    Restaurant restaurant,
+    bool isPremium,
+    bool isFavorite,
+    WidgetRef ref,
+  ) {
 
     return Scaffold(
       body: CustomScrollView(
@@ -39,15 +88,28 @@ class RestaurantDetailScreen extends ConsumerWidget {
             expandedHeight: 300,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              background: PageView.builder(
-                itemCount: restaurant.images.length,
-                itemBuilder: (context, index) {
-                  return CachedNetworkImage(
-                    imageUrl: restaurant.images[index],
-                    fit: BoxFit.cover,
-                  );
-                },
-              ),
+              background: restaurant.images.isEmpty
+                  ? Container(
+                      color: Colors.grey[300],
+                      child: Icon(PhosphorIcons.image(), size: 64, color: Colors.grey[600]),
+                    )
+                  : PageView.builder(
+                      itemCount: restaurant.images.length,
+                      itemBuilder: (context, index) {
+                        return CachedNetworkImage(
+                          imageUrl: restaurant.images[index],
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: Colors.grey[300],
+                            child: const Center(child: CircularProgressIndicator()),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: Colors.grey[300],
+                            child: Icon(PhosphorIcons.image(), size: 64, color: Colors.grey[600]),
+                          ),
+                        );
+                      },
+                    ),
             ),
             actions: [
               IconButton(
@@ -123,17 +185,21 @@ class RestaurantDetailScreen extends ConsumerWidget {
                   const SizedBox(height: Spacing.sm),
 
                   // Cuisine and price
-                  Text(
-                    '${AppUtils.formatList(restaurant.cuisineTypes)} • ${restaurant.priceRange}',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                  ),
+                  if (restaurant.cuisineTypes.isNotEmpty || restaurant.priceRange.isNotEmpty)
+                    Text(
+                      [
+                        if (restaurant.cuisineTypes.isNotEmpty) AppUtils.formatList(restaurant.cuisineTypes),
+                        if (restaurant.priceRange.isNotEmpty) restaurant.priceRange,
+                      ].where((s) => s.isNotEmpty).join(' • '),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                    ),
 
                   const SizedBox(height: Spacing.md),
 
                   // Discount badge (if premium)
-                  if (restaurant.isPremiumPartner && isPremium)
+                  if (restaurant.isPremiumPartner && isPremium && restaurant.discount != null)
                     Container(
                       padding: const EdgeInsets.all(Spacing.sm),
                       decoration: BoxDecoration(
@@ -163,6 +229,24 @@ class RestaurantDetailScreen extends ConsumerWidget {
 
                   const SizedBox(height: Spacing.lg),
 
+                  // Opening hours
+                  if (restaurant.openingHours.isNotEmpty) ...[
+                    Text(
+                      'Opening times',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(Spacing.sm),
+                        child: Column(
+                          children: _openingHoursEntries(restaurant.openingHours),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                  ],
+
                   // Description
                   Text(
                     'About',
@@ -177,42 +261,45 @@ class RestaurantDetailScreen extends ConsumerWidget {
                   const SizedBox(height: Spacing.lg),
 
                   // Amenities
-                  Text(
-                    'Amenities',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: Spacing.sm),
-                  Wrap(
-                    spacing: Spacing.sm,
-                    runSpacing: Spacing.sm,
-                    children: restaurant.amenities.map((amenity) {
-                      return Chip(
-                        label: Text(amenity),
-                        avatar: Icon(PhosphorIcons.check(), size: 16),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: Spacing.lg),
+                  if (restaurant.amenities.isNotEmpty) ...[
+                    Text(
+                      'Amenities',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Wrap(
+                      spacing: Spacing.sm,
+                      runSpacing: Spacing.sm,
+                      children: restaurant.amenities.map((amenity) {
+                        return Chip(
+                          label: Text(amenity),
+                          avatar: Icon(PhosphorIcons.check(), size: 16),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                  ],
 
                   // Contact info
-                  _InfoCard(
-                    icon: PhosphorIcons.phone(),
-                    title: 'Phone',
-                    subtitle: restaurant.phoneNumber,
-                    onTap: () => _makePhoneCall(restaurant.phoneNumber),
-                  ),
+                  if (restaurant.phoneNumber.isNotEmpty)
+                    _InfoCard(
+                      icon: PhosphorIcons.phone(),
+                      title: 'Phone',
+                      subtitle: restaurant.phoneNumber,
+                      onTap: () => _makePhoneCall(restaurant.phoneNumber),
+                    ),
 
-                  const SizedBox(height: Spacing.md),
+                  if (restaurant.phoneNumber.isNotEmpty) const SizedBox(height: Spacing.md),
 
-                  _InfoCard(
-                    icon: PhosphorIcons.mapPin(),
-                    title: 'Address',
-                    subtitle: restaurant.address,
-                    onTap: () {
-                      // TODO: Open in maps
-                    },
-                  ),
+                  if (restaurant.address.isNotEmpty)
+                    _InfoCard(
+                      icon: PhosphorIcons.mapPin(),
+                      title: 'Address',
+                      subtitle: restaurant.address,
+                      onTap: () {
+                        // TODO: Open in maps
+                      },
+                    ),
                 ],
               ),
             ),
@@ -223,15 +310,9 @@ class RestaurantDetailScreen extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(Spacing.md),
           child: ElevatedButton.icon(
-            onPressed: restaurant.acceptsReservations
-                ? () => context.push('/restaurants/$restaurantId/book')
-                : null,
+            onPressed: () => context.push('/restaurants/$restaurantId/book'),
             icon: Icon(PhosphorIcons.calendar()),
-            label: Text(
-              restaurant.acceptsReservations
-                  ? 'Make a Reservation'
-                  : 'Reservations Not Available',
-            ),
+            label: const Text('Make a Reservation'),
           ),
         ),
       ),
@@ -244,6 +325,52 @@ class RestaurantDetailScreen extends ConsumerWidget {
       await launchUrl(uri);
     }
   }
+}
+
+List<Widget> _openingHoursEntries(Map<String, String> openingHours) {
+  const dayOrder = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  final entries = <Widget>[];
+  for (final day in dayOrder) {
+    final hours = openingHours[day] ??
+        openingHours[day.toLowerCase()] ??
+        openingHours[day.toUpperCase()] ??
+        '—';
+    entries.add(
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              day,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+            Text(
+              hours,
+              style: TextStyle(
+                fontSize: 14,
+                color: hours.toLowerCase().contains('closed')
+                    ? AppColors.textSecondary
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  return entries;
 }
 
 class _InfoCard extends StatelessWidget {

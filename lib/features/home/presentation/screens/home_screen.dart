@@ -5,18 +5,17 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/widgets/loading/shimmer_loading.dart';
-import '../../../../data/mock_data.dart';
 import '../../../bookings/presentation/providers/booking_providers.dart';
 import '../../../bookings/domain/booking.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../events/presentation/providers/event_providers.dart';
+import '../../../restaurants/presentation/providers/restaurant_providers.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final restaurants = MockData.restaurants.take(10).toList();
 
     return Scaffold(
       body: SafeArea(
@@ -42,7 +41,7 @@ class HomeScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
                   _buildUpcomingBookingsCard(context, ref),
                   const SizedBox(height: 24),
-                  _buildSection(context, 'Trending Restaurants', restaurants, true),
+                  _buildRestaurantsSection(context, ref),
                   const SizedBox(height: 24),
                   _buildEventsSection(context, ref),
                 ]),
@@ -95,75 +94,105 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSection(BuildContext context, String title, List items, bool isRestaurant) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 200,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return GestureDetector(
-                onTap: () => context.go(isRestaurant 
-                  ? '/restaurants/${item.id}' 
-                  : '/events/${item.id}'),
-                child: Container(
-                  width: 160,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    image: DecorationImage(
-                      image: NetworkImage(item.imageUrl),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+  Widget _buildRestaurantsSection(BuildContext context, WidgetRef ref) {
+    final restaurantsAsync = ref.watch(featuredRestaurantsProvider);
+    
+    return restaurantsAsync.when(
+      data: (restaurants) {
+        if (restaurants.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        
+        final displayRestaurants = restaurants.take(10).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Trending Restaurants', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 200,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: displayRestaurants.length,
+                itemBuilder: (context, index) {
+                  final restaurant = displayRestaurants[index];
+                  return GestureDetector(
+                    onTap: () => context.go('/restaurants/${restaurant.id}'),
+                    child: Container(
+                      width: 160,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        image: DecorationImage(
+                          image: NetworkImage(restaurant.images.isNotEmpty ? restaurant.images.first : ''),
+                          fit: BoxFit.cover,
+                          onError: (_, __) {},
+                        ),
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                          ),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        alignment: Alignment.bottomLeft,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              restaurant.name,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
+                                  color: AppColors.rating, size: 14),
+                                const SizedBox(width: 4),
+                                Text(restaurant.rating.toStringAsFixed(1),
+                                  style: const TextStyle(color: Colors.white, fontSize: 12)),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    padding: const EdgeInsets.all(12),
-                    alignment: Alignment.bottomLeft,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isRestaurant ? item.name : item.title,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (isRestaurant) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              PhosphorIcon(PhosphorIcons.star(PhosphorIconsStyle.fill),
-                                color: AppColors.rating, size: 14),
-                              const SizedBox(width: 4),
-                              Text(item.rating.toString(),
-                                style: const TextStyle(color: Colors.white, fontSize: 12)),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Trending Restaurants', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: 3,
+              itemBuilder: (context, index) {
+                return const Padding(
+                  padding: EdgeInsets.only(right: 12),
+                  child: HorizontalListItemShimmer(),
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+      error: (error, stack) => const SizedBox.shrink(),
     );
   }
 

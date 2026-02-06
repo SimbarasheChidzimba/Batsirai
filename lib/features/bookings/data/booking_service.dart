@@ -1,14 +1,18 @@
 import '../domain/booking.dart';
 import 'package:uuid/uuid.dart';
+import 'bookings_repository.dart';
 
 /// Service layer for booking operations
-/// This can be easily replaced with API calls when backend is ready
+/// Uses BookingsRepository for API calls
 class BookingService {
   static const _uuid = Uuid();
+  final BookingsRepository? _repository;
+
+  BookingService(this._repository);
 
   /// Create a restaurant booking
-  /// TODO: Replace with API call: POST /api/bookings/restaurant
-  static Future<RestaurantBooking> createRestaurantBooking({
+  /// POST /bookings/restaurants
+  Future<RestaurantBooking> createRestaurantBooking({
     required String userId,
     required String restaurantId,
     required String restaurantName,
@@ -17,20 +21,24 @@ class BookingService {
     required int partySize,
     String? specialRequests,
   }) async {
-    // Simulate API delay
+    final repository = _repository;
+    if (repository != null) {
+      // Format date as "YYYY-MM-DD"
+      final dateStr = '${bookingDate.year}-${bookingDate.month.toString().padLeft(2, '0')}-${bookingDate.day.toString().padLeft(2, '0')}';
+      // Format time as "HH:MM"
+      final timeStr = '${bookingTime.hour.toString().padLeft(2, '0')}:${bookingTime.minute.toString().padLeft(2, '0')}';
+      
+      return await repository.createRestaurantBooking(
+        restaurantId: restaurantId,
+        bookingDate: dateStr,
+        timeSlot: timeStr,
+        partySize: partySize,
+        specialRequests: specialRequests,
+      );
+    }
+
+    // Fallback to mock if repository not available
     await Future.delayed(const Duration(seconds: 1));
-
-    // TODO: Replace with actual API call
-    // final response = await dio.post('/api/bookings/restaurant', data: {
-    //   'userId': userId,
-    //   'restaurantId': restaurantId,
-    //   'bookingDate': bookingDate.toIso8601String(),
-    //   'bookingTime': bookingTime.toIso8601String(),
-    //   'partySize': partySize,
-    //   'specialRequests': specialRequests,
-    // });
-    // return RestaurantBooking.fromJson(response.data);
-
     return RestaurantBooking(
       id: _uuid.v4(),
       userId: userId,
@@ -47,8 +55,8 @@ class BookingService {
   }
 
   /// Create an event booking (ticket purchase)
-  /// TODO: Replace with API call: POST /api/bookings/event
-  static Future<EventBooking> createEventBooking({
+  /// TODO: Implement event booking API endpoint when available
+  Future<EventBooking> createEventBooking({
     required String userId,
     required String eventId,
     required String eventTitle,
@@ -56,17 +64,9 @@ class BookingService {
     required List<EventTicket> tickets,
     required double totalAmount,
   }) async {
-    // Simulate API delay
+    // TODO: Replace with actual API call when endpoint is available
+    // For now, use mock implementation
     await Future.delayed(const Duration(seconds: 1));
-
-    // TODO: Replace with actual API call
-    // final response = await dio.post('/api/bookings/event', data: {
-    //   'userId': userId,
-    //   'eventId': eventId,
-    //   'tickets': tickets.map((t) => t.toJson()).toList(),
-    //   'totalAmount': totalAmount,
-    // });
-    // return EventBooking.fromJson(response.data);
 
     return EventBooking(
       id: _uuid.v4(),
@@ -83,44 +83,183 @@ class BookingService {
     );
   }
 
-  /// Get user's restaurant bookings
-  /// TODO: Replace with API call: GET /api/bookings/restaurant?userId={userId}
-  static Future<List<RestaurantBooking>> getRestaurantBookings(String userId) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    // TODO: Replace with actual API call
+  /// Get user's restaurant bookings from list bookings API
+  Future<List<RestaurantBooking>> getRestaurantBookings(String userId) async {
+    final repository = _repository;
+    if (repository != null) {
+      final all = await repository.listBookings(page: 1, limit: 100);
+      return all.whereType<RestaurantBooking>().toList();
+    }
     return [];
   }
 
-  /// Get user's event bookings
-  /// TODO: Replace with API call: GET /api/bookings/event?userId={userId}
-  static Future<List<EventBooking>> getEventBookings(String userId) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    // TODO: Replace with actual API call
+  /// Get user's event bookings from list bookings API
+  Future<List<EventBooking>> getEventBookings(String userId) async {
+    final repository = _repository;
+    if (repository != null) {
+      final all = await repository.listBookings(page: 1, limit: 100);
+      return all.whereType<EventBooking>().toList();
+    }
+    return [];
+  }
+
+  /// Get my tickets (event tickets) from GET /tickets/my-tickets
+  Future<List<EventBooking>> getMyTickets() async {
+    final repository = _repository;
+    if (repository != null) {
+      return await repository.getMyTickets();
+    }
     return [];
   }
 
   /// Cancel a restaurant booking
-  /// TODO: Replace with API call: PUT /api/bookings/restaurant/{id}/cancel
-  static Future<void> cancelRestaurantBooking(String bookingId) async {
+  /// PATCH /bookings/{id}/cancel
+  Future<void> cancelRestaurantBooking(String bookingId, {String? cancellationReason}) async {
+    final repository = _repository;
+    if (repository != null) {
+      await repository.cancelBooking(
+        bookingId: bookingId,
+        cancellationReason: cancellationReason,
+      );
+      return;
+    }
+    
+    // Fallback
     await Future.delayed(const Duration(milliseconds: 500));
-    // TODO: Replace with actual API call
-    // await dio.put('/api/bookings/restaurant/$bookingId/cancel');
   }
 
   /// Cancel an event booking
-  /// TODO: Replace with API call: PUT /api/bookings/event/{id}/cancel
-  static Future<void> cancelEventBooking(String bookingId) async {
+  /// PATCH /bookings/{id}/cancel
+  Future<void> cancelEventBooking(String bookingId, {String? cancellationReason}) async {
+    final repository = _repository;
+    if (repository != null) {
+      await repository.cancelBooking(
+        bookingId: bookingId,
+        cancellationReason: cancellationReason,
+      );
+      return;
+    }
+    
+    // Fallback
     await Future.delayed(const Duration(milliseconds: 500));
-    // TODO: Replace with actual API call
-    // await dio.put('/api/bookings/event/$bookingId/cancel');
   }
 
-  static String _generateConfirmationCode() {
+  /// Update a booking
+  /// PUT /bookings/{id}
+  Future<Map<String, dynamic>> updateBooking({
+    required String bookingId,
+    DateTime? scheduledDate,
+    int? attendees,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final repository = _repository;
+    if (repository != null) {
+      return await repository.updateBooking(
+        bookingId: bookingId,
+        scheduledDate: scheduledDate?.toIso8601String(),
+        attendees: attendees,
+        metadata: metadata,
+      );
+    }
+    
+    throw Exception('BookingsRepository not available');
+  }
+
+  /// Delete a booking
+  /// DELETE /bookings/{id}
+  Future<void> deleteBooking(String bookingId) async {
+    final repository = _repository;
+    if (repository != null) {
+      await repository.deleteBooking(bookingId);
+      return;
+    }
+    
+    throw Exception('BookingsRepository not available');
+  }
+
+  /// Get booking details
+  /// GET /bookings/{id}
+  Future<Map<String, dynamic>> getBookingDetail(String bookingId) async {
+    final repository = _repository;
+    if (repository != null) {
+      return await repository.getBookingDetail(bookingId);
+    }
+    
+    throw Exception('BookingsRepository not available');
+  }
+
+  /// Create reservation request (restaurant confirms later; then user pays commitment fee)
+  /// POST /bookings/create
+  Future<RestaurantBooking> createReservationRequest({
+    required String serviceId,
+    required DateTime scheduledDate,
+    required String timeSlot,
+    required int attendees,
+    String type = 'RESTAURANT',
+  }) async {
+    final repository = _repository;
+    if (repository != null) {
+      final scheduledStr = scheduledDate.toUtc().toIso8601String();
+      return await repository.createReservationRequest(
+        serviceId: serviceId,
+        scheduledDate: scheduledStr,
+        timeSlot: timeSlot,
+        attendees: attendees,
+        type: type,
+      );
+    }
+    throw Exception('BookingsRepository not available');
+  }
+
+  /// Pay commitment fee for a booking (returns Stripe checkout URL for in-app WebView)
+  /// POST /bookings/{bookingId}/pay
+  Future<String> payCommitmentFee(String bookingId, {String paymentMethod = 'STRIPE'}) async {
+    final repository = _repository;
+    if (repository != null) {
+      return await repository.payCommitmentFee(bookingId, paymentMethod: paymentMethod);
+    }
+    throw Exception('BookingsRepository not available');
+  }
+
+  /// Get digital ticket (QR) for a booking
+  /// GET /bookings/{bookingId}/ticket
+  Future<Map<String, dynamic>> getBookingTicket(String bookingId) async {
+    final repository = _repository;
+    if (repository != null) {
+      return await repository.getBookingTicket(bookingId);
+    }
+    throw Exception('BookingsRepository not available');
+  }
+
+  /// Purchase event ticket (direct payment - Stripe checkout)
+  /// POST /tickets/purchase - returns Stripe session URL for in-app WebView
+  Future<String> purchaseEventTicket({
+    required String serviceId,
+    required DateTime scheduledDate,
+    required int attendees,
+    required String tierId,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final repository = _repository;
+    if (repository != null) {
+      final scheduledStr = scheduledDate.toUtc().toIso8601String();
+      return await repository.purchaseEventTicket(
+        serviceId: serviceId,
+        scheduledDate: scheduledStr,
+        attendees: attendees,
+        tierId: tierId,
+        metadata: metadata,
+      );
+    }
+    throw Exception('BookingsRepository not available');
+  }
+
+  String _generateConfirmationCode() {
     final random = DateTime.now().millisecondsSinceEpoch.toString();
     return random.substring(random.length - 6);
   }
 
-  static String _generateQRCodeData(String userId, String eventId) {
+  String _generateQRCodeData(String userId, String eventId) {
     // Generate QR code data for event entry
     return 'EVENT:$eventId:USER:$userId:${DateTime.now().millisecondsSinceEpoch}';
   }

@@ -37,24 +37,33 @@ class RestaurantCard extends ConsumerWidget {
               children: [
                 AspectRatio(
                   aspectRatio: 16 / 9,
-                  child: CachedNetworkImage(
-                    imageUrl: restaurant.images.first,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: AppColors.surfaceVariant,
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: AppColors.surfaceVariant,
-                      child: Icon(
-                        PhosphorIcons.image(),
-                        size: 48,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
+                  child: restaurant.images.isEmpty
+                      ? Container(
+                          color: AppColors.surfaceVariant,
+                          child: Icon(
+                            PhosphorIcons.image(),
+                            size: 48,
+                            color: AppColors.textSecondary,
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: restaurant.images.first,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: AppColors.surfaceVariant,
+                            child: const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: AppColors.surfaceVariant,
+                            child: Icon(
+                              PhosphorIcons.image(),
+                              size: 48,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
                 ),
                 
                 // Gradient overlay

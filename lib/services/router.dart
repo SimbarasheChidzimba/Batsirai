@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/home/presentation/screens/home_screen.dart';
 import '../features/restaurants/presentation/screens/restaurants_screen.dart';
-import '../features/restaurants/presentation/screens/restaurant_detail_screen.dart';
+import '../features/restaurants/presentation/restaurant_detail_screen.dart';
 import '../features/restaurants/presentation/screens/booking_screen.dart';
 import '../features/events/presentation/screens/events_screen.dart';
 import '../features/events/presentation/screens/event_detail_screen.dart';
@@ -22,7 +23,9 @@ import '../features/auth/presentation/signup_screen.dart';
 import '../features/auth/presentation/screens/signup_success_screen.dart';
 import '../features/bookings/presentation/screens/payment_screen.dart';
 import '../features/bookings/presentation/screens/booking_success_screen.dart';
+import '../features/bookings/presentation/screens/stripe_checkout_webview_screen.dart';
 import '../features/bookings/presentation/bookings_list_screen.dart';
+import '../features/bookings/presentation/providers/booking_providers.dart';
 import '../core/widgets/bottom_nav_bar.dart';
 
 part 'router.g.dart';
@@ -209,11 +212,22 @@ GoRouter router(RouterRef ref) {
         path: '/payment',
         name: 'payment',
         builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>? ?? {};
+          final extra = state.extra as Map<String, dynamic>?;
+          
+          // If no extra data provided, try to get from pending booking data
+          // This handles the case where user logs in and we navigate to payment
+          Map<String, dynamic> bookingData;
+          if (extra != null && extra.isNotEmpty) {
+            bookingData = extra;
+          } else {
+            // Try to get from provider (requires WidgetRef, so we'll handle in the screen)
+            bookingData = {};
+          }
+          
           return PaymentScreen(
-            type: extra['type'] ?? 'restaurant',
-            bookingData: extra['bookingData'] ?? {},
-            amount: extra['amount']?.toDouble() ?? 0.0,
+            type: bookingData['type'] ?? 'restaurant',
+            bookingData: bookingData['bookingData'] ?? {},
+            amount: (bookingData['amount'] as num?)?.toDouble() ?? 0.0,
           );
         },
       ),
@@ -233,6 +247,14 @@ GoRouter router(RouterRef ref) {
         path: '/bookings',
         name: 'bookings',
         builder: (context, state) => const BookingsListScreen(),
+      ),
+      GoRoute(
+        path: '/stripe-checkout',
+        name: 'stripe-checkout',
+        builder: (context, state) {
+          final url = state.extra as String? ?? '';
+          return StripeCheckoutWebViewScreen(checkoutUrl: url);
+        },
       ),
     ],
   );
